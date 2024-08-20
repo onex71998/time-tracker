@@ -94,12 +94,26 @@
         .export-btn:hover, .reset-btn:hover {
             background-color: #219150;
         }
-
+        .datetime-picker {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .datetime-picker input {
+            margin: 0 5px;
+            padding: 5px;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
     <h1>Machine Stop Time Tracker</h1>
     <div class="container" id="machines"></div>
+    <div class="datetime-picker">
+        <input type="datetime-local" id="start-date" />
+        <input type="datetime-local" id="end-date" />
+    </div>
     <button class="export-btn" onclick="exportData()">Export to CSV</button>
 
     <script>
@@ -246,97 +260,29 @@
 
         function updateMachineDisplay(machine) {
             const totalTimeDisplay = document.getElementById(`${machine}-total-time`);
-
             if (!totalTimeDisplay) return; // Check if element exists
 
-            let elapsed = stopTimes[machine].totalElapsed || 0;
+            let totalElapsed = stopTimes[machine].totalElapsed || 0;
 
             if (stopTimes[machine].machineStart !== null) {
                 const now = Date.now();
                 const diff = Math.floor((now - stopTimes[machine].machineStart) / 1000);
-                elapsed += diff;
+                totalElapsed += diff;
             }
-            totalTimeDisplay.textContent = formatTime(elapsed);
+
+            totalTimeDisplay.textContent = formatTime(totalElapsed);
         }
 
         function formatTime(seconds) {
-            const hours = String(Math.floor(seconds / 3600)).padStart(2, '0');
-            const minutes = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
-            const secs = String(seconds % 60).padStart(2, '0');
-            return `${hours}:${minutes}:${secs}`;
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
         }
 
         function formatTimestamp(timestamp) {
             const date = new Date(timestamp);
-            const options = {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                timeZone: 'Asia/Kuala_Lumpur',
-                hour12: false
-            };
-            const formatter = new Intl.DateTimeFormat('en-GB', options);
-            const parts = formatter.formatToParts(date);
-            const formattedDate = parts.reduce((acc, part) => {
-                if (part.type === 'year') return acc + part.value + '-';
-                if (part.type === 'month') return acc + part.value + '-';
-                if (part.type === 'day') return acc + part.value + ' ';
-                if (part.type === 'hour') return acc + part.value + ':';
-                if (part.type === 'minute') return acc + part.value + ':';
-                if (part.type === 'second') return acc + part.value;
-                return acc;
-            }, '');
-            return formattedDate;
-        }
-
-        function saveState() {
-            const state = {
-                stopTimes,
-                machineRunning,
-                csvData
-            };
-            localStorage.setItem('trackerState', JSON.stringify(state));
-        }
-
-        function loadState() {
-            const savedState = localStorage.getItem('trackerState');
-            if (savedState) {
-                const { stopTimes: savedStopTimes, machineRunning: savedMachineRunning, csvData: savedCsvData } = JSON.parse(savedState);
-                Object.assign(stopTimes, savedStopTimes);
-                Object.assign(machineRunning, savedMachineRunning);
-                csvData = savedCsvData;
-                updateUI();
-            }
-        }
-
-        function updateUI() {
-            machines.forEach(machine => {
-                reasons.forEach(reason => {
-                    updateDisplay(machine, reason);
-                });
-                updateMachineDisplay(machine);
-            });
-        }
-
-        function disableMachineControls(machine, selectedReason) {
-            reasons.forEach(reason => {
-                if (reason !== selectedReason) {
-                    document.getElementById(`${machine}-${reason}-start-btn`).classList.add('disabled');
-                    document.getElementById(`${machine}-${reason}-stop-btn`).classList.add('disabled');
-                    document.getElementById(`${machine}-${reason}-reason-name`).classList.add('disabled');
-                }
-            });
-        }
-
-        function enableAllControls(machine) {
-            reasons.forEach(reason => {
-                document.getElementById(`${machine}-${reason}-start-btn`).classList.remove('disabled');
-                document.getElementById(`${machine}-${reason}-stop-btn`).classList.remove('disabled');
-                document.getElementById(`${machine}-${reason}-reason-name`).classList.remove('disabled');
-            });
+            return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
         }
 
         function resetMachine(machine) {
@@ -346,38 +292,140 @@
             }
             const confirmReset = confirm('Do you want to reset all timers for this machine?');
             if (confirmReset) {
-                Object.keys(stopTimes[machine]).forEach(reason => {
+                // Reset individual reason timers
+                reasons.forEach(reason => {
                     stopTimes[machine][reason].start = null;
                     stopTimes[machine][reason].elapsed = 0;
                     stopTimes[machine][reason].reasonElapsed = 0;
                     clearInterval(intervals[machine][reason]);
-                    updateDisplay(machine, reason);
+
+                    // Update the display to reflect the reset state
+                    const timeDisplay = document.getElementById(`${machine}-${reason}-time`);
+                    const reasonTimeDisplay = document.getElementById(`${machine}-${reason}-reason-time`);
+                    if (timeDisplay && reasonTimeDisplay) {
+                        timeDisplay.textContent = "00:00:00";
+                        reasonTimeDisplay.textContent = "00:00:00";
+                    }
                 });
+
+                // Reset total machine time
                 stopTimes[machine].totalElapsed = 0;
                 stopTimes[machine].machineStart = null;
                 clearInterval(machineIntervals[machine]);
-                updateMachineDisplay(machine);
-                saveState(); // Save state after reset
+
+                // Update the total time display to reflect the reset state
+                const totalTimeDisplay = document.getElementById(`${machine}-total-time`);
+                if (totalTimeDisplay) {
+                    totalTimeDisplay.textContent = "00:00:00";
+                }
+
+                // Save state after reset
+                saveState();
             }
         }
 
+        function saveState() {
+            const state = { stopTimes, csvData };
+            localStorage.setItem('machineTrackerState', JSON.stringify(state));
+        }
+
+        function loadState() {
+            const savedState = localStorage.getItem('machineTrackerState');
+            if (savedState) {
+                const state = JSON.parse(savedState);
+                stopTimes = state.stopTimes || stopTimes;
+                csvData = state.csvData || csvData;
+
+                // Restore intervals and update displays
+                machines.forEach(machine => {
+                    reasons.forEach(reason => {
+                        if (stopTimes[machine][reason].start !== null) {
+                            intervals[machine][reason] = setInterval(() => updateDisplay(machine, reason), 1000);
+                        }
+                        updateDisplay(machine, reason);
+                    });
+                    if (stopTimes[machine].machineStart !== null) {
+                        machineIntervals[machine] = setInterval(() => updateMachineDisplay(machine), 1000);
+                    }
+                    updateMachineDisplay(machine);
+                });
+            }
+        }
+
+        function disableMachineControls(machine, activeReason) {
+            reasons.forEach(reason => {
+                if (reason !== activeReason) {
+                    const startBtn = document.getElementById(`${machine}-${reason}-start-btn`);
+                    const stopBtn = document.getElementById(`${machine}-${reason}-stop-btn`);
+                    const reasonName = document.getElementById(`${machine}-${reason}-reason-name`);
+                    if (startBtn) {
+                        startBtn.classList.add('disabled');
+                        startBtn.disabled = true;
+                    }
+                    if (stopBtn) {
+                        stopBtn.classList.add('disabled');
+                        stopBtn.disabled = true;
+                    }
+                    if (reasonName) {
+                        reasonName.classList.add('disabled');
+                    }
+                }
+            });
+        }
+
+        function enableAllControls(machine) {
+            reasons.forEach(reason => {
+                const startBtn = document.getElementById(`${machine}-${reason}-start-btn`);
+                const stopBtn = document.getElementById(`${machine}-${reason}-stop-btn`);
+                const reasonName = document.getElementById(`${machine}-${reason}-reason-name`);
+                if (startBtn) {
+                    startBtn.classList.remove('disabled');
+                    startBtn.disabled = false;
+                }
+                if (stopBtn) {
+                    stopBtn.classList.remove('disabled');
+                    stopBtn.disabled = false;
+                }
+                if (reasonName) {
+                    reasonName.classList.remove('disabled');
+                }
+            });
+        }
+
         function exportData() {
-            let csvContent = "data:text/csv;charset=utf-8,";
-            csvContent += "Start Time,Machine,Stop Reason,Stop Time,Elapsed Time\n";
-            csvData.forEach(row => {
-                csvContent += `${row.start || ''},${row.machine || ''},${row.reason || ''},${row.end || ''},${row.elapsed || ''}\n`;
+            const startDateInput = document.getElementById('start-date');
+            const endDateInput = document.getElementById('end-date');
+            
+            const startDate = new Date(startDateInput.value).getTime();
+            const endDate = new Date(endDateInput.value).getTime();
+
+            if (isNaN(startDate) || isNaN(endDate) || startDate > endDate) {
+                alert('Please select a valid time range.');
+                return;
+            }
+
+            let filteredData = csvData.filter(row => {
+                const startTimestamp = new Date(row.start).getTime();
+                const endTimestamp = row.end ? new Date(row.end).getTime() : startTimestamp;
+                return (startTimestamp >= startDate && endTimestamp <= endDate);
+            });
+
+            let csvContent = "data:text/csv;charset=utf-8,Start,Machine,Reason,End,Elapsed Time\n";
+            filteredData.forEach(row => {
+                csvContent += `${row.start},${row.machine},${row.reason},${row.end || ''},${row.elapsed || ''}\n`;
             });
 
             const encodedUri = encodeURI(csvContent);
-            const link = document.createElement('a');
-            link.setAttribute('href', encodedUri);
-            link.setAttribute('download', 'machine_stop_time_tracker.csv');
-            document.body.appendChild(link);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "machine_stop_times.csv");
+            document.body.appendChild(link); // Required for FF
             link.click();
             document.body.removeChild(link);
         }
 
-        document.addEventListener('DOMContentLoaded', init);
+        // Initialize the app
+        init();
     </script>
 </body>
 </html>
